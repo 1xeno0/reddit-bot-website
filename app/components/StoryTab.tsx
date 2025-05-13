@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import StoryTable from "./StoryTable";
 import StoryEditor from "./StoryEditor";
 import VideoGenerationForm from "./VideoGenerationForm";
+import { getApiUrl } from "../config/api";
 
 interface Story {
   filename: string;
@@ -63,6 +64,11 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoConfigs, setVideoConfigs] = useState<VideoConfig[]>([]);
   const [loadingVideoConfigs, setLoadingVideoConfigs] = useState(false);
+  const [fetchingNewStories, setFetchingNewStories] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [deletingStory, setDeletingStory] = useState<string | null>(null);
+  const [savingStoryEdit, setSavingStoryEdit] = useState(false);
+  const [generatingVideo, setGeneratingVideo] = useState(false);
 
   useEffect(() => {
     fetchStories();
@@ -72,7 +78,7 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
   const fetchStories = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:5000/get_stories");
+      const response = await fetch(getApiUrl("/get_stories"));
       if (!response.ok) {
         throw new Error("Failed to fetch stories");
       }
@@ -88,7 +94,7 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
   const fetchVideoConfigs = async () => {
     try {
       setLoadingVideoConfigs(true);
-      const response = await fetch("http://localhost:5000/get_video_configs");
+      const response = await fetch(getApiUrl("/get_video_configs"));
       if (!response.ok) {
         throw new Error("Failed to fetch video configurations");
       }
@@ -103,24 +109,26 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
 
   const handleFetchNewStories = async () => {
     try {
-      setFetchingStories(true);
-      const response = await fetch("http://localhost:5000/get_new_stories", {
+      setFetchingNewStories(true);
+      const response = await fetch(getApiUrl("/get_new_stories"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ subreddit }),
+        body: JSON.stringify({
+          subreddit: "AskReddit",
+        }),
       });
       
       if (!response.ok) {
         throw new Error("Failed to fetch new stories");
       }
       
-      await fetchStories(); // Refresh the list after fetching new stories
+      await fetchStories();
     } catch (err) {
       setError("Failed to fetch new stories: " + (err as Error).message);
     } finally {
-      setFetchingStories(false);
+      setFetchingNewStories(false);
     }
   };
 
@@ -130,7 +138,7 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
       
       // Delete each story one by one
       const deletePromises = stories.map(story => 
-        fetch(`http://localhost:5000/delete_story/${story.filename}`, {
+        fetch(getApiUrl(`/delete_story/${story.filename}`), {
           method: "DELETE",
         })
       );
@@ -154,29 +162,35 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
   };
 
   const handleDeleteStory = async (filename: string) => {
-    try {
-      const response = await fetch(`http://localhost:5000/delete_story/${filename}`, {
-        method: "DELETE",
-      });
-      
-      if (!response.ok) {
-        throw new Error("Failed to delete story");
+    if (window.confirm(`Are you sure you want to delete story: ${filename}?`)) {
+      try {
+        setDeletingStory(filename);
+        const response = await fetch(getApiUrl(`/delete_story/${filename}`), {
+          method: "DELETE",
+        });
+        
+        if (!response.ok) {
+          throw new Error("Failed to delete story");
+        }
+        
+        setStories(stories.filter(story => story.filename !== filename));
+        
+        if (selectedStory?.filename === filename) {
+          setSelectedStory(null);
+          setIsEditing(false);
+        }
+      } catch (err) {
+        setError("Failed to delete story: " + (err as Error).message);
+      } finally {
+        setDeletingStory(null);
       }
-      
-      setStories(stories.filter(story => story.filename !== filename));
-      
-      if (selectedStory?.filename === filename) {
-        setSelectedStory(null);
-        setIsEditing(false);
-      }
-    } catch (err) {
-      setError("Failed to delete story: " + (err as Error).message);
     }
   };
 
   const handleUpdateStory = async (updatedStory: Story) => {
     try {
-      const response = await fetch(`http://localhost:5000/update_story/${updatedStory.filename}`, {
+      setSavingStoryEdit(true);
+      const response = await fetch(getApiUrl(`/update_story/${updatedStory.filename}`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -216,9 +230,10 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
     setIsGeneratingVideo(false);
   };
 
-  const handleVideoGeneration = async (storyFilename: string, videoConfigFilename: string) => {
+  const handleVideoGeneration = async (storyFilename: string, videoConfigFilename: string): Promise<string | null> => {
     try {
-      const response = await fetch("http://localhost:5000/generate_video", {
+      setGeneratingVideo(true);
+      const response = await fetch(getApiUrl("/generate_video"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -238,6 +253,8 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
     } catch (err) {
       setError("Failed to generate video: " + (err as Error).message);
       return null;
+    } finally {
+      setGeneratingVideo(false);
     }
   };
 
@@ -245,6 +262,17 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
   const getSelectedStories = () => {
     return stories.filter(story => selectedStoryIds.includes(story.filename));
   };
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
+
+  const filteredStories = stories.filter(story => 
+    story.config.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    story.config.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    story.config.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    story.config.subreddit.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
@@ -307,9 +335,9 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
         <button
           className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md flex items-center"
           onClick={handleFetchNewStories}
-          disabled={fetchingStories || !subreddit.trim()}
+          disabled={fetchingNewStories || !subreddit.trim()}
         >
-          {fetchingStories ? (
+          {fetchingNewStories ? (
             <>
               <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -371,7 +399,7 @@ const StoryTab = ({ onSwitchToVideos }: StoryTabProps) => {
         />
       ) : (
         <StoryTable
-          stories={stories}
+          stories={filteredStories}
           loading={loading}
           onEdit={handleEditStory}
           onDelete={handleDeleteStory}

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import VideoConfigTable from "./VideoConfigTable";
 import VideoConfigEditor from "./VideoConfigEditor";
 import VideoGenerationForm from "./VideoGenerationForm";
+import { getApiUrl, API_BASE_URL } from "../config/api";
 
 interface VideoConfig {
   main_text: string;
@@ -57,6 +58,8 @@ const VideoTab = () => {
   const [stories, setStories] = useState<Story[]>([]);
   const [selectedStories, setSelectedStories] = useState<Story[]>([]);
   const [generatedVideos, setGeneratedVideos] = useState<string[]>([]);
+  const [deletingConfig, setDeletingConfig] = useState<string | null>(null);
+  const [savingConfig, setSavingConfig] = useState(false);
 
   useEffect(() => {
     fetchVideoConfigs();
@@ -66,7 +69,7 @@ const VideoTab = () => {
   const fetchVideoConfigs = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:5000/get_video_configs");
+      const response = await fetch(getApiUrl("/get_video_configs"));
       if (!response.ok) {
         throw new Error("Failed to fetch video configurations");
       }
@@ -81,7 +84,7 @@ const VideoTab = () => {
 
   const fetchStories = async () => {
     try {
-      const response = await fetch("http://localhost:5000/get_stories");
+      const response = await fetch(getApiUrl("/get_stories"));
       if (!response.ok) {
         throw new Error("Failed to fetch stories");
       }
@@ -100,7 +103,8 @@ const VideoTab = () => {
 
   const handleDeleteConfig = async (filename: string) => {
     try {
-      const response = await fetch(`http://localhost:5000/delete_video_config/${filename}`, {
+      setDeletingConfig(filename);
+      const response = await fetch(getApiUrl(`/delete_video_config/${filename}`), {
         method: "DELETE",
       });
       
@@ -116,12 +120,15 @@ const VideoTab = () => {
       }
     } catch (err) {
       setError("Failed to delete video configuration: " + (err as Error).message);
+    } finally {
+      setDeletingConfig(null);
     }
   };
 
   const handleUpdateConfig = async (updatedConfig: VideoConfigFile) => {
     try {
-      const response = await fetch(`http://localhost:5000/update_video_config/${updatedConfig.filename}`, {
+      setSavingConfig(true);
+      const response = await fetch(getApiUrl(`/update_video_config/${updatedConfig.filename}`), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -137,10 +144,12 @@ const VideoTab = () => {
         config.filename === updatedConfig.filename ? updatedConfig : config
       ));
       
+      setSelectedConfig(updatedConfig);
       setIsEditing(false);
-      setSelectedConfig(null);
     } catch (err) {
       setError("Failed to update video configuration: " + (err as Error).message);
+    } finally {
+      setSavingConfig(false);
     }
   };
 
@@ -160,7 +169,8 @@ const VideoTab = () => {
 
   const handleVideoGeneration = async (storyFilename: string, videoFilename: string) => {
     try {
-      const response = await fetch("http://localhost:5000/generate_video", {
+      setIsGenerating(true);
+      const response = await fetch(getApiUrl("/generate_video"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -182,6 +192,8 @@ const VideoTab = () => {
     } catch (err) {
       setError("Failed to generate video: " + (err as Error).message);
       return null;
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -244,7 +256,7 @@ const VideoTab = () => {
                 <div className="mb-2 font-medium">{videoPath}</div>
                 <div className="flex justify-end">
                   <a
-                    href={`http://localhost:5000/get_video/${videoPath}`}
+                    href={`${API_BASE_URL}/get_video/${videoPath}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-blue-600 hover:text-blue-800"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { API_BASE_URL, getApiUrl } from "../config/api";
 
 const VideoOutputTab = () => {
   const [videos, setVideos] = useState<string[]>([]);
@@ -15,13 +16,17 @@ const VideoOutputTab = () => {
   const fetchVideos = async () => {
     try {
       setLoading(true);
-      const response = await fetch("http://localhost:5000/get_all_videos");
+      console.log("Fetching videos from API:", getApiUrl('/get_all_videos'));
+      const response = await fetch(getApiUrl('/get_all_videos'));
+      console.log("API response status:", response.status);
       if (!response.ok) {
         throw new Error("Failed to fetch videos");
       }
       const data = await response.json();
+      console.log("API response data:", data);
       setVideos(data);
     } catch (err) {
+      console.error("Error fetching videos:", err);
       setError("Failed to fetch videos: " + (err as Error).message);
     } finally {
       setLoading(false);
@@ -119,7 +124,7 @@ const VideoOutputTab = () => {
               {playingVideo === videoPath ? (
                 <div className="aspect-video bg-black">
                   <video 
-                    src={`http://localhost:5000/get_video/${videoPath}`} 
+                    src={`${API_BASE_URL}/get_video/${videoPath}`} 
                     controls 
                     className="w-full h-full" 
                     autoPlay
@@ -144,7 +149,7 @@ const VideoOutputTab = () => {
                   MP4 Video
                 </div>
                 <a
-                  href={`http://localhost:5000/get_video/${videoPath}`}
+                  href={`${API_BASE_URL}/get_video/${videoPath}`}
                   download={getFileName(videoPath)}
                   className="inline-flex items-center px-3 py-1.5 border border-gray-300 text-sm leading-5 font-medium rounded-md text-gray-700 bg-white hover:text-gray-500 focus:outline-none focus:border-blue-300 focus:shadow-outline-blue active:text-gray-800 active:bg-gray-50 transition ease-in-out duration-150"
                 >
